@@ -8,7 +8,7 @@ using Gee.External.Capstone.X86;
 
 namespace MMOvrAnalyzer
 {
-    // Класс для отслеживания состояния регистров
+    // Класс для отслеживания состояния регистров (полностью из оригинала)
     class RegisterTracker
     {
         private Dictionary<string, ushort> registers = new Dictionary<string, ushort>();
