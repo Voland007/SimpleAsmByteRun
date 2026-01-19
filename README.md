@@ -138,6 +138,145 @@ private const ushort PATCH_BASE = 0x0B7F;      // Базовый адрес па
 1. **Отслеживание адресов**: Предотвращение повторного анализа
 2. **Обнаружение циклов**: Проверка на посещенные адреса
 
+## 🌿 Ветки проекта
+
+Проект поддерживает две основные ветки с разным уровнем детализации вывода:
+
+### 🧠 `master` ветка (детализированный вывод)
+Ветка `master` содержит полную версию анализатора с подробным отладочным выводом, который позволяет:
+- Видеть все вызываемые инструкции
+- Отслеживать изменения значений регистров
+- Контролировать правильность выполнения симуляции патчей
+- Анализировать альтернативные пути выполнения
+- Отлаживать сложные случаи косвенной загрузки текстов
+
+### 🎯 `simple` ветка (упрощенный вывод)
+Ветка `simple` предоставляет минималистичный вывод, содержащий только:
+- Координаты объектов на карте
+- Тексты, которые отображаются игроку
+- Базовую информацию об объектах
+
+**Пример вывода в simple-ветке:**
+```
+Analyzing overlay: C:\GOG Games\Might and Magic 1\SORPIGAL.OVR
+File size: 2100 bytes
+======================================================================
+
+Number of objects: 24 (0x18)
+----------------------------------------------------------------------
+
+=== Object #1 at (8,3) ===
+  Text at 0xC9D3: "THE INNKEEPER ASKS:\r"WOULD YOU LIKE TO SIGN IN (Y/N)?""
+----------------------------------------
+
+=== Object #2 at (8,5) ===
+  Path0:
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCA28: ""EULARDS FINE FOODS""
+  Path1:
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCA3D: ""B AND B BLACKSMITHS""
+  Path11:
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCA53: ""THE INN OF SORPIGAL""
+----------------------------------------
+
+=== Object #3 at (6,5) ===
+  Text at 0xCA69: "A MAN WEARING A LEATHER APRON SPEAKS:\r"DISTINGUISHED TRAVELERS, YOU'VE COME TOTHE RIGHT PLACE.CAN I HELP YOU (Y/N)?""
+----------------------------------------
+
+=== Object #4 at (10,5) ===
+  Text at 0xCADE: "BEHIND THE COUNTER, AN OVERWEIGHT DWARF\rEXCLAIMS: "YOU LOOK LIKE A HUNGRY BUNCH!WOULD YOU LIKE TO BUY SOME FOOD (Y/N)?""
+----------------------------------------
+
+=== Object #5 at (12,0) ===
+  Text at 0xCDCB: "A PASSAGE LEADS OUTSIDE, TAKE IT (Y/N)?"
+----------------------------------------
+
+=== Object #6 at (11,14) ===
+  Text at 0xCB56: "STEP UP TO THE BAR (Y/N)?"
+----------------------------------------
+
+=== Object #7 at (4,1) ===
+  Text at 0xCB70: "SEVERAL ORNATELY ROBED CLERICS APPROACH\rTHE PARTY AND ASK, "DO YOU SEEK OUR HELP(Y/N)?""
+----------------------------------------
+
+=== Object #8 at (13,11) ===
+  Text at 0xCBC8: "BEFORE YOU ARE VARIOUS GROUPS ENGAGED INTRAINING EXERCISES. WORG,THE GUILDMASTERASKS, "DO YOU REQUIRE TRAINING(Y/N)?""
+----------------------------------------
+
+=== Object #9 at (11,3) ===
+  Text at 0xCC53: "A TENACIOUS LEPRECHAUN APPEARS SAYING,\r"TRAVELING THE ROADS IS QUITE DANGEROUS\rSAVE FOR THE STRONG AND COURAGEOUS,\rONLY 1 GEM YOU LOSE AND I'LL SEND YOU\rTO THE TOWN YOU CHOOSE."\r\r'ESC' TO GO BACK     "
+----------------------------------------
+
+=== Object #10 at (14,0) ===
+  Text at 0xCD2E: "STAIRS GOING DOWN! TAKE THEM (Y/N)?"
+----------------------------------------
+
+=== Object #11 at (2,4) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #12 at (0,9) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #13 at (10,12) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #14 at (14,14) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #15 at (7,1) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #16 at (0,4) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #17 at (0,2) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #18 at (0,6) ===
+  Text at 0xCD53: "THERE IS A STATUE HERE, SEARCH IT (Y/N)?"
+----------------------------------------
+
+=== Object #19 at (4,0) ===
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCD93: ""TEMPLE MOONSHADOW""
+----------------------------------------
+
+=== Object #20 at (6,10) ===
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCDB9: ""JAIL, KEEP OUT!""
+----------------------------------------
+
+=== Object #21 at (9,14) ===
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCD7C: ""YE OLDE HOGGE TAVERN""
+----------------------------------------
+
+=== Object #22 at (13,10) ===
+  Text at 0xCA0A: "A SIGN ABOVE THE DOOR READS:\r"
+  Text at 0xCDA7: ""OTTO'S TRAINING""
+----------------------------------------
+
+=== Object #23 at (5,15) ===
+----------------------------------------
+
+=== Object #24 at (5,8) ===
+  Path0:
+  Text at 0xCDF3: "TRAP DOOR!"
+  Text at 0xCDFE: ", LEVITATION SAVES YOU!"
+  Path1:
+  Text at 0xCDF3: "TRAP DOOR!"
+----------------------------------------
+```
+
 ## 📚 Использоваонная литература
 
 - [Capstone Engine Documentation](http://www.capstone-engine.org/)
