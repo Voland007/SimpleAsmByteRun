@@ -10,10 +10,13 @@ namespace MMOvrAnalyzer
 {
     class Program
     {
-        // Константы для Sorpigal
-        private const ushort TEXT_BASE_ADDR = 0xC5EC;
-        private const ushort PATCH_BASE = 0x0B7F;
-
+        // Класс для конфигурации файлов (заменили константы)
+        class OverlayConfig
+        {
+            public string FileName { get; set; }
+            public ushort TextBaseAddr { get; set; }
+            public ushort PatchBase { get; set; }
+        }
         // Глобальный список для отслеживания проанализированных объектов
         private static int currentObjectIndex = 0;
         private static List<AlternativePath> alternativePaths = new List<AlternativePath>();
@@ -43,7 +46,19 @@ namespace MMOvrAnalyzer
 
         static void Main(string[] args)
         {
-            string filename = @"C:\GOG Games\Might and Magic 1\SORPIGAL.OVR";
+            string filename;
+
+            if (args.Length > 0)
+            {
+                filename = args[0];
+            }
+            else
+            {
+                filename = @"C:\GOG Games\Might and Magic 1\SORPIGAL.OVR";
+            }
+
+            // Получаем конфигурацию для файла
+            OverlayConfig config = GetConfigForFile(filename);
 
             if (!File.Exists(filename))
             {
@@ -56,9 +71,10 @@ namespace MMOvrAnalyzer
             try
             {
                 Console.WriteLine($"Analyzing overlay: {filename}");
+                Console.WriteLine($"Configuration: TEXT_BASE_ADDR=0x{config.TextBaseAddr:X4}, PATCH_BASE=0x{config.PatchBase:X4}");
                 Console.WriteLine($"File size: {new FileInfo(filename).Length} bytes");
                 Console.WriteLine("=".PadRight(70, '='));
-                AnalyzeOverlay(filename);
+                AnalyzeOverlay(filename, config);
             }
             catch (Exception ex)
             {
@@ -68,6 +84,47 @@ namespace MMOvrAnalyzer
 
             Console.WriteLine("\nPress any key to exit...");
             Console.ReadKey();
+        }
+
+        // Метод для определения конфигурации по имени файла
+        static OverlayConfig GetConfigForFile(string filename)
+        {
+            string fileNameOnly = Path.GetFileName(filename).ToUpper();
+
+            switch (fileNameOnly)
+            {
+                case "SORPIGAL.OVR":
+                    return new OverlayConfig
+                    {
+                        FileName = filename,
+                        TextBaseAddr = 0xC5EC,
+                        PatchBase = 0x0B7F
+                    };
+
+                // Добавьте другие файлы по мере необходимости
+                // case "FILE2.OVR":
+                //     return new OverlayConfig { ... };
+
+                default:
+                    // Заглушка для неизвестных файлов - можно запросить значения у пользователя
+                    Console.WriteLine($"\nUnknown file: {fileNameOnly}");
+                    Console.WriteLine("Please provide configuration values:");
+
+                    Console.Write("TEXT_BASE_ADDR (hex, e.g., C5EC): ");
+                    string textBaseStr = Console.ReadLine();
+                    ushort textBase = Convert.ToUInt16(textBaseStr, 16);
+
+                    Console.Write("PATCH_BASE (hex, e.g., 0B7F): ");
+                    string patchBaseStr = Console.ReadLine();
+                    ushort patchBase = Convert.ToUInt16(patchBaseStr, 16);
+
+                    return new OverlayConfig
+                    {
+                        FileName = filename,
+                        TextBaseAddr = textBase,
+                        PatchBase = patchBase
+                    };
+            }
         }
 
         // Вспомогательный метод для чтения 16-битного значения из памяти
@@ -85,8 +142,8 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // Метод для восстановления реального пути выполнения (полностью из оригинала)
-        static List<X86Instruction> ReconstructExecutionPath(BinaryReader br, uint startAddress)
+        // Метод для восстановления реального пути выполнения
+        static List<X86Instruction> ReconstructExecutionPath(BinaryReader br, uint startAddress, OverlayConfig config)
         {
             var path = new List<X86Instruction>();
             var visitedAddresses = new HashSet<uint>();
@@ -134,7 +191,7 @@ namespace MMOvrAnalyzer
                         string mnemonicUpper = insn.Mnemonic.ToUpper();
                         uint nextAddress = (uint)(insn.Address + insn.Bytes.Length);
 
-                        // Обрабатываем переходы (как в оригинале)
+                        // Обрабатываем переходы
                         if (mnemonicUpper == "JMP")
                         {
                             uint jumpTarget = GetInstructionTargetAddress(insn, br.BaseStream.Length);
@@ -158,7 +215,7 @@ namespace MMOvrAnalyzer
                         }
                         else if (mnemonicUpper.StartsWith("J") && !mnemonicUpper.StartsWith("JMP"))
                         {
-                            // Для условных переходов - идем по основному пути (не берем альтернативный)
+                            // Для условных переходов - идем по основному пути
                             currentAddress = nextAddress;
                             break;
                         }
@@ -177,7 +234,7 @@ namespace MMOvrAnalyzer
                                 // Анализируем подпрограмму, но ограничиваем глубину
                                 if (path.Count < MAX_INSTRUCTIONS / 2)
                                 {
-                                    var subroutinePath = ReconstructExecutionPath(br, callTarget);
+                                    var subroutinePath = ReconstructExecutionPath(br, callTarget, config);
                                     path.AddRange(subroutinePath);
                                 }
                             }
@@ -198,13 +255,13 @@ namespace MMOvrAnalyzer
             return path;
         }
 
-        // Метод для анализа косвенных путей загрузки текста (полностью из оригинала)
-        static HashSet<string> AnalyzeIndirectTextPatterns(BinaryReader br, uint patchAddress)
+        // Метод для анализа косвенных путей загрузки текста
+        static HashSet<string> AnalyzeIndirectTextPatterns(BinaryReader br, uint patchAddress, OverlayConfig config)
         {
             var foundTexts = new HashSet<string>();
 
             // Восстанавливаем реальный путь выполнения
-            var executionPath = ReconstructExecutionPath(br, patchAddress);
+            var executionPath = ReconstructExecutionPath(br, patchAddress, config);
 
             if (executionPath.Count == 0)
             {
@@ -236,7 +293,7 @@ namespace MMOvrAnalyzer
                             ushort combinedAddr = (ushort)((bpValue << 8) | alValue);
 
                             // Проверяем, является ли это текстовым адресом
-                            string text = ExtractText(br, combinedAddr);
+                            string text = ExtractText(br, combinedAddr, config);
                             if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                             {
                                 string textEntry = $"Text at 0x{combinedAddr:X4}: \"{text}\"";
@@ -250,9 +307,9 @@ namespace MMOvrAnalyzer
             return foundTexts;
         }
 
-        // ПОЛНОСТЬЮ из оригинала, но без отладочного вывода
+        // Полный анализ CALL инструкций
         static HashSet<string> AnalyzeCallsWithFullDisassembly(BinaryReader br, uint address, HashSet<uint> analyzedAddresses,
-            HashSet<string> foundTexts, int depth)
+            HashSet<string> foundTexts, int depth, OverlayConfig config)
         {
             if (depth > 5)
                 return foundTexts;
@@ -296,10 +353,10 @@ namespace MMOvrAnalyzer
                         instructionsShown++;
 
                         // Ищем тексты в текущей инструкции
-                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
+                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
 
                         // Также отслеживаем регистры для сложных случаев
-                        TrackRegisterOperations(insn, br, depth);
+                        TrackRegisterOperations(insn, br, depth, config);
 
                         string mnemonicUpper = insn.Mnemonic.ToUpper();
                         uint nextAddress = (uint)(insn.Address + insn.Bytes.Length);
@@ -309,7 +366,7 @@ namespace MMOvrAnalyzer
                             uint callTarget = GetInstructionTargetAddress(insn, fileLength);
                             if (callTarget < fileLength && callTarget != 0 && !analyzedAddresses.Contains(callTarget))
                             {
-                                AnalyzeCallsWithFullDisassembly(br, callTarget, analyzedAddresses, foundTexts, depth + 1);
+                                AnalyzeCallsWithFullDisassembly(br, callTarget, analyzedAddresses, foundTexts, depth + 1, config);
                             }
                         }
 
@@ -341,8 +398,8 @@ namespace MMOvrAnalyzer
             return foundTexts;
         }
 
-        // Новый метод для отслеживания операций с регистрами (из оригинала)
-        static void TrackRegisterOperations(X86Instruction insn, BinaryReader br, int depth)
+        // Метод для отслеживания операций с регистрами
+        static void TrackRegisterOperations(X86Instruction insn, BinaryReader br, int depth, OverlayConfig config)
         {
             byte[] instructionBytes = insn.Bytes;
             uint address = (uint)insn.Address;
@@ -363,7 +420,7 @@ namespace MMOvrAnalyzer
                 }
             }
 
-            // Загрузка непосредственного значения в 8-битный регистр (AL, CL, DL, BL, AH, CH, DH, BH)
+            // Загрузка непосредственного значения в 8-битный регистр
             else if (instructionBytes.Length >= 2 &&
                      (instructionBytes[0] & 0xF8) == 0xB0)  // B0-B7: MOV r8, imm8
             {
@@ -394,7 +451,7 @@ namespace MMOvrAnalyzer
             }
         }
 
-        static void AnalyzeOverlay(string filename)
+        static void AnalyzeOverlay(string filename, OverlayConfig config)
         {
             using (var fs = new FileStream(filename, FileMode.Open, FileAccess.Read))
             using (var br = new BinaryReader(fs))
@@ -423,13 +480,13 @@ namespace MMOvrAnalyzer
                     globallyAnalyzedPaths.Clear();
                     allPathTexts.Clear();
 
-                    ProcessObject(br, currentObjectIndex, coordinates[i], directions[i], patchKeys[i]);
+                    ProcessObject(br, currentObjectIndex, coordinates[i], directions[i], patchKeys[i], config);
                 }
             }
         }
 
-        // Ключевой метод - ВОССТАНАВЛИВАЕМ ПОЛНУЮ ЛОГИКУ из оригинала
-        static void AnalyzeAlternativePaths(BinaryReader br, int objIndex)
+        // Анализ альтернативных путей
+        static void AnalyzeAlternativePaths(BinaryReader br, int objIndex, OverlayConfig config)
         {
             if (alternativePaths.Count == 0)
                 return;
@@ -450,15 +507,15 @@ namespace MMOvrAnalyzer
                 path.PathNumber = pathNumber;
                 pathNumber++;
 
-                // Автоматически анализируем альтернативный путь (как если бы пользователь нажал Y)
+                // Автоматически анализируем альтернативный путь
                 string globalPathKey = $"{currentPatchAddress:X4}_{path.Address:X4}_{path.TargetAddress:X4}";
                 if (!globallyAnalyzedPaths.Contains(globalPathKey))
                 {
                     globallyAnalyzedPaths.Add(globalPathKey);
 
-                    // Анализируем альтернативный путь (полностью как в оригинале)
+                    // Анализируем альтернативный путь
                     AnalyzeAlternativePath(br, currentPatchAddress, path.Address, path.TargetAddress,
-                        objIndex, path.PathNumber, new HashSet<string>(), 0);
+                        objIndex, path.PathNumber, new HashSet<string>(), 0, config);
 
                     path.Analyzed = true;
                 }
@@ -467,9 +524,9 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // ВОССТАНАВЛИВАЕМ ПОЛНОСТЬЮ из оригинала (без отладочного вывода)
+        // Анализ конкретного альтернативного пути
         static void AnalyzeAlternativePath(BinaryReader br, uint patchAddress, uint jumpAddress, uint alternativeStartAddress,
-            int objIndex, int pathIndex, HashSet<string> alreadyAnalyzedPaths, int recursionDepth = 0)
+            int objIndex, int pathIndex, HashSet<string> alreadyAnalyzedPaths, int recursionDepth = 0, OverlayConfig config = null)
         {
             const int MAX_RECURSION_DEPTH = 3;
 
@@ -497,29 +554,28 @@ namespace MMOvrAnalyzer
             var foundTexts = new HashSet<string>();
 
             // 1. Линейное дизассемблирование альтернативного пути (с начала патча!)
-            // Собираем локальные альтернативные пути внутри этого пути
             var localAlternativePaths = new List<AlternativePath>();
             ShowLinearDisassemblyWithAlternativeBranch(br, patchAddress, jumpAddress, alternativeStartAddress,
-                localAlternativePaths, objIndex, 0, true);
+                localAlternativePaths, objIndex, 0, true, config);
 
             // 2. Анализ CALL инструкций в альтернативном пути (с начала патча!)
             var analyzedCalls = new HashSet<uint>();
 
-            // Используем специальный метод для вложенных путей (как в оригинале)
+            // Используем специальный метод для вложенных путей
             if (IsNestedPath(jumpAddress, alternativeStartAddress))
             {
                 AnalyzeCallsWithNestedAlternativeBranch(br, patchAddress, jumpAddress, alternativeStartAddress,
-                    analyzedCalls, foundTexts, 0, new HashSet<string>());
+                    analyzedCalls, foundTexts, 0, new HashSet<string>(), config);
             }
             else
             {
-                // ВАЖНО: Всегда анализируем с начала патча!
+                // Всегда анализируем с начала патча!
                 AnalyzeCallsWithAlternativeBranch(br, patchAddress, jumpAddress, alternativeStartAddress,
-                    analyzedCalls, foundTexts, 0, 0);
+                    analyzedCalls, foundTexts, 0, 0, config);
             }
 
             // 3. Также анализируем косвенные пути загрузки текста для этого пути
-            var indirectTexts = AnalyzeIndirectTextPatterns(br, patchAddress);
+            var indirectTexts = AnalyzeIndirectTextPatterns(br, patchAddress, config);
             foreach (var text in indirectTexts)
             {
                 foundTexts.Add(text);
@@ -528,7 +584,7 @@ namespace MMOvrAnalyzer
             // 4. Сохраняем тексты для этого пути
             allPathTexts[pathIndex] = foundTexts;
 
-            // 5. Анализируем ВЛОЖЕННЫЕ альтернативные пути (как в оригинале)
+            // 5. Анализируем ВЛОЖЕННЫЕ альтернативные пути
             if (localAlternativePaths.Count > 0 && recursionDepth < MAX_RECURSION_DEPTH)
             {
                 for (int i = 0; i < localAlternativePaths.Count; i++)
@@ -545,9 +601,9 @@ namespace MMOvrAnalyzer
                         {
                             globallyAnalyzedPaths.Add(nestedGlobalKey);
 
-                            // Анализируем вложенный альтернативный путь рекурсивно (с начала патча!)
+                            // Анализируем вложенный альтернативный путь рекурсивно
                             AnalyzeAlternativePath(br, patchAddress, nestedPath.Address, nestedPath.TargetAddress,
-                                objIndex, pathIndex * 10 + i + 1, alreadyAnalyzedPaths, recursionDepth + 1);
+                                objIndex, pathIndex * 10 + i + 1, alreadyAnalyzedPaths, recursionDepth + 1, config);
 
                             nestedPath.Analyzed = true;
                         }
@@ -556,7 +612,7 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // Метод для проверки доступности вложенного перехода из альтернативного пути (из оригинала)
+        // Метод для проверки доступности вложенного перехода из альтернативного пути
         static bool IsTransitionReachableFromAlternativePath(BinaryReader br, uint patchAddress, uint mainJumpAddress,
             uint alternativeStartAddress, uint nestedJumpAddress)
         {
@@ -637,7 +693,7 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // Метод для проверки, является ли путь вложенным (из оригинала)
+        // Метод для проверки, является ли путь вложенным
         static bool IsNestedPath(uint jumpAddress, uint alternativeStartAddress)
         {
             return jumpAddress != 0 &&
@@ -645,10 +701,10 @@ namespace MMOvrAnalyzer
                    jumpAddress > 0x0090;
         }
 
-        // ВОССТАНАВЛИВАЕМ из оригинала (без отладочного вывода)
+        // Линейное дизассемблирование с альтернативной веткой
         static void ShowLinearDisassemblyWithAlternativeBranch(BinaryReader br, uint patchAddress,
             uint jumpAddress, uint alternativeStartAddress, List<AlternativePath> localAlternativePaths,
-            int objIndex, int depth = 0, bool isMainAlternativeAnalysis = false)
+            int objIndex, int depth = 0, bool isMainAlternativeAnalysis = false, OverlayConfig config = null)
         {
             using (var capstone = CapstoneDisassembler.CreateX86Disassembler(X86DisassembleMode.Bit16))
             {
@@ -780,10 +836,10 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // ВОССТАНАВЛИВАЕМ из оригинала (без отладочного вывода)
+        // Анализ CALL инструкций с альтернативной веткой
         static void AnalyzeCallsWithAlternativeBranch(BinaryReader br, uint patchAddress,
             uint jumpAddress, uint alternativeStartAddress, HashSet<uint> analyzedAddresses,
-            HashSet<string> foundTexts, int depth, int callDepth = 0)
+            HashSet<string> foundTexts, int depth, int callDepth = 0, OverlayConfig config = null)
         {
             const int MAX_CALL_DEPTH = 5;
 
@@ -829,10 +885,10 @@ namespace MMOvrAnalyzer
                         instructionsShown++;
 
                         // Ищем тексты в текущей инструкции
-                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
+                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
 
                         // Также отслеживаем регистры
-                        TrackRegisterOperations(insn, br, depth);
+                        TrackRegisterOperations(insn, br, depth, config);
 
                         string mnemonicUpper = insn.Mnemonic.ToUpper();
                         uint nextAddress = (uint)(insn.Address + insn.Bytes.Length);
@@ -851,7 +907,7 @@ namespace MMOvrAnalyzer
                             if (callTarget < fileLength && callTarget != 0 && !analyzedAddresses.Contains(callTarget))
                             {
                                 AnalyzeCallsWithAlternativeBranch(br, callTarget, 0, 0,
-                                    analyzedAddresses, foundTexts, depth + 1, callDepth + 1);
+                                    analyzedAddresses, foundTexts, depth + 1, callDepth + 1, config);
                             }
                         }
 
@@ -883,10 +939,10 @@ namespace MMOvrAnalyzer
             }
         }
 
-        // ВОССТАНАВЛИВАЕМ из оригинала (без отладочного вывода)
+        // Анализ вложенных альтернативных веток
         static void AnalyzeCallsWithNestedAlternativeBranch(BinaryReader br, uint patchAddress,
             uint jumpAddress, uint alternativeStartAddress, HashSet<uint> analyzedAddresses,
-            HashSet<string> foundTexts, int depth, HashSet<string> alreadyAnalyzedConditions = null)
+            HashSet<string> foundTexts, int depth, HashSet<string> alreadyAnalyzedConditions = null, OverlayConfig config = null)
         {
             if (depth > 5)
             {
@@ -954,15 +1010,15 @@ namespace MMOvrAnalyzer
                         if (mnemonic.StartsWith("CALL"))
                         {
                             // Ищем тексты в инструкции CALL
-                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
-                            TrackRegisterOperations(insn, br, depth);
+                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
+                            TrackRegisterOperations(insn, br, depth, config);
 
                             uint callTarget = GetInstructionTargetAddress(insn, fileLength);
                             if (callTarget < fileLength && callTarget != 0 && !analyzedAddresses.Contains(callTarget))
                             {
                                 // Анализируем подпрограмму
                                 AnalyzeCallsWithAlternativeBranch(br, callTarget, 0, 0,
-                                    analyzedAddresses, foundTexts, depth + 1, 0);
+                                    analyzedAddresses, foundTexts, depth + 1, 0, config);
                             }
 
                             currentAddress = (uint)(insn.Address + insn.Bytes.Length);
@@ -973,8 +1029,8 @@ namespace MMOvrAnalyzer
                         else if (mnemonic.StartsWith("J") && !mnemonic.StartsWith("JMP") && !mnemonic.StartsWith("JECXZ"))
                         {
                             // Ищем тексты в этом переходе
-                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
-                            TrackRegisterOperations(insn, br, depth);
+                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
+                            TrackRegisterOperations(insn, br, depth, config);
 
                             // Переходим по этому переходу (предполагаем, что он выполняется)
                             uint target = GetInstructionTargetAddress(insn, fileLength);
@@ -998,8 +1054,8 @@ namespace MMOvrAnalyzer
                         else
                         {
                             // Обычные инструкции - ищем тексты
-                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
-                            TrackRegisterOperations(insn, br, depth);
+                            FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
+                            TrackRegisterOperations(insn, br, depth, config);
 
                             currentAddress = (uint)(insn.Address + insn.Bytes.Length);
                             processedInstruction = true;
@@ -1019,20 +1075,20 @@ namespace MMOvrAnalyzer
                 {
                     // Анализируем выполнение от jumpAddress до конца
                     AnalyzeSpecificJumpExecutionWithFullCollection(br, jumpAddress, alternativeStartAddress,
-                        analyzedAddresses, foundTexts, depth, "");
+                        analyzedAddresses, foundTexts, depth, "", config);
                 }
                 else
                 {
                     // Попробуем анализировать напрямую от jumpAddress
                     AnalyzeSpecificJumpExecutionWithFullCollection(br, jumpAddress, alternativeStartAddress,
-                        analyzedAddresses, foundTexts, depth, "");
+                        analyzedAddresses, foundTexts, depth, "", config);
                 }
             }
         }
 
-        // Метод для анализа конкретного перехода с полным сбором текстов (из оригинала)
+        // Метод для анализа конкретного перехода с полным сбором текстов
         static void AnalyzeSpecificJumpExecutionWithFullCollection(BinaryReader br, uint jumpAddress, uint alternativeStartAddress,
-            HashSet<uint> analyzedAddresses, HashSet<string> foundTexts, int depth, string prefix)
+            HashSet<uint> analyzedAddresses, HashSet<string> foundTexts, int depth, string prefix, OverlayConfig config)
         {
             if (analyzedAddresses.Contains(jumpAddress))
                 return;
@@ -1067,8 +1123,8 @@ namespace MMOvrAnalyzer
                         instructionsShown++;
 
                         // Ищем тексты и добавляем их в список
-                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts);
-                        TrackRegisterOperations(insn, br, depth);
+                        FindTextsInInstruction(insn, br, registerTracker, depth, foundTexts, config);
+                        TrackRegisterOperations(insn, br, depth, config);
 
                         string mnemonic = insn.Mnemonic.ToUpper();
                         uint nextAddress = (uint)(insn.Address + insn.Bytes.Length);
@@ -1109,7 +1165,7 @@ namespace MMOvrAnalyzer
                             {
                                 // Анализируем подпрограмму
                                 AnalyzeCallsWithAlternativeBranch(br, callTarget, 0, 0,
-                                    analyzedAddresses, foundTexts, depth + 1, 0);
+                                    analyzedAddresses, foundTexts, depth + 1, 0, config);
                             }
                         }
 
@@ -1154,22 +1210,22 @@ namespace MMOvrAnalyzer
         }
 
         static void ProcessObject(BinaryReader br, int objIndex, Tuple<byte, byte> coords,
-                                 byte direction, ushort patchKey)
+                                 byte direction, ushort patchKey, OverlayConfig config)
         {
             Console.WriteLine($"\n=== Object #{objIndex} at ({coords.Item1},{coords.Item2}) ===");
 
-            uint patchAddress = CalculatePatchAddress(patchKey);
+            uint patchAddress = CalculatePatchAddress(patchKey, config);
             currentPatchAddress = patchAddress;
 
-            AnalyzePatchCode(br, patchAddress, objIndex);
+            AnalyzePatchCode(br, patchAddress, objIndex, config);
         }
 
-        static HashSet<string> AnalyzeMainPath(BinaryReader br, uint patchAddress)
+        static HashSet<string> AnalyzeMainPath(BinaryReader br, uint patchAddress, OverlayConfig config)
         {
             var foundTexts = new HashSet<string>();
 
             // Анализируем косвенные пути загрузки текста
-            var indirectTexts = AnalyzeIndirectTextPatterns(br, patchAddress);
+            var indirectTexts = AnalyzeIndirectTextPatterns(br, patchAddress, config);
             foreach (var text in indirectTexts)
             {
                 foundTexts.Add(text);
@@ -1177,12 +1233,12 @@ namespace MMOvrAnalyzer
 
             // Анализируем CALL инструкции
             var analyzedCalls = new HashSet<uint>();
-            AnalyzeCallsWithFullDisassembly(br, patchAddress, analyzedCalls, foundTexts, 0);
+            AnalyzeCallsWithFullDisassembly(br, patchAddress, analyzedCalls, foundTexts, 0, config);
 
             return foundTexts;
         }
 
-        static void ShowLinearDisassemblyAndCollectAlternativePaths(BinaryReader br, uint startAddress)
+        static void ShowLinearDisassemblyAndCollectAlternativePaths(BinaryReader br, uint startAddress, OverlayConfig config = null)
         {
             using (var capstone = CapstoneDisassembler.CreateX86Disassembler(X86DisassembleMode.Bit16))
             {
@@ -1316,7 +1372,7 @@ namespace MMOvrAnalyzer
                     }
                 }
 
-                // Если путь уникален (отличается от основного и других альтернативных путей)
+                // Если путь уникален
                 if (isDifferentFromMain && isDifferentFromOtherAlternatives)
                 {
                     alternativePathsToShow.Add(kvp);
@@ -1326,8 +1382,7 @@ namespace MMOvrAnalyzer
             // Сначала выводим основной путь
             if (hasMainPath)
             {
-                // Определяем, нужно ли обозначать основной путь как Path0
-                // Path0 выводим только если есть уникальные альтернативные пути, которые будут показаны
+                // Path0 выводим только если есть уникальные альтернативные пути
                 bool hasUniqueAlternativePaths = alternativePathsToShow.Count > 0;
 
                 if (hasUniqueAlternativePaths)
@@ -1371,13 +1426,13 @@ namespace MMOvrAnalyzer
             return true;
         }
 
-        static uint CalculatePatchAddress(ushort key)
+        static uint CalculatePatchAddress(ushort key, OverlayConfig config)
         {
-            uint address = (uint)(key + PATCH_BASE);
+            uint address = (uint)(key + config.PatchBase);
             return address & 0xFFFF;
         }
 
-        static void AnalyzePatchCode(BinaryReader br, uint patchAddress, int objIndex)
+        static void AnalyzePatchCode(BinaryReader br, uint patchAddress, int objIndex, OverlayConfig config)
         {
             long fileSize = br.BaseStream.Length;
 
@@ -1387,16 +1442,16 @@ namespace MMOvrAnalyzer
             }
 
             // 1. Собираем альтернативные пути из линейного дизассемблирования
-            ShowLinearDisassemblyAndCollectAlternativePaths(br, patchAddress);
+            ShowLinearDisassemblyAndCollectAlternativePaths(br, patchAddress, config);
 
             // 2. Анализируем основной путь (линейное выполнение)
-            var mainPathTexts = AnalyzeMainPath(br, patchAddress);
+            var mainPathTexts = AnalyzeMainPath(br, patchAddress, config);
 
             // 3. Сохраняем тексты основного пути как Path0
             allPathTexts[0] = mainPathTexts;
 
-            // 4. Анализируем все альтернативные пути (с сохранением оригинальной логики)
-            AnalyzeAlternativePaths(br, objIndex);
+            // 4. Анализируем все альтернативные пути
+            AnalyzeAlternativePaths(br, objIndex, config);
 
             // 5. ВСЕГДА выводим результаты, даже если нет альтернативных путей
             DisplayAllPathTexts();
@@ -1404,8 +1459,8 @@ namespace MMOvrAnalyzer
             Console.WriteLine("----------------------------------------");
         }
 
-        // Измененный метод для поиска текстов в инструкции (возвращает HashSet<string>)
-        static void FindTextsInInstruction(X86Instruction insn, BinaryReader br, RegisterTracker registerTracker, int depth, HashSet<string> output)
+        // Метод для поиска текстов в инструкции
+        static void FindTextsInInstruction(X86Instruction insn, BinaryReader br, RegisterTracker registerTracker, int depth, HashSet<string> output, OverlayConfig config)
         {
             byte[] instructionBytes = insn.Bytes;
             uint address = (uint)insn.Address;
@@ -1416,7 +1471,7 @@ namespace MMOvrAnalyzer
                 instructionBytes[2] == 0xD4 && instructionBytes[3] == 0x3B)
             {
                 ushort textAddr = BitConverter.ToUInt16(instructionBytes, 4);
-                string text = ExtractText(br, textAddr);
+                string text = ExtractText(br, textAddr, config);
                 if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                 {
                     output.Add($"Text at 0x{textAddr:X4}: \"{text}\"");
@@ -1440,7 +1495,7 @@ namespace MMOvrAnalyzer
                     // Пробуем получить значение из трекера регистров
                     if (registerTracker.TryGetRegisterValue(regName, out ushort value))
                     {
-                        string text = ExtractText(br, value);
+                        string text = ExtractText(br, value, config);
                         if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                         {
                             output.Add($"Text at 0x{value:X4} (via {regName}): \"{text}\"");
@@ -1457,7 +1512,7 @@ namespace MMOvrAnalyzer
                 ushort immediateValue = BitConverter.ToUInt16(instructionBytes, 1);
 
                 // Проверяем, не является ли это текстовым адресом
-                string text = ExtractText(br, immediateValue);
+                string text = ExtractText(br, immediateValue, config);
                 if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                 {
                     output.Add($"Text at 0x{immediateValue:X4}: \"{text}\"");
@@ -1468,7 +1523,7 @@ namespace MMOvrAnalyzer
             else if (instructionBytes.Length >= 3 && instructionBytes[0] == 0xBD)
             {
                 ushort immediateValue = BitConverter.ToUInt16(instructionBytes, 1);
-                string text = ExtractText(br, immediateValue);
+                string text = ExtractText(br, immediateValue, config);
                 if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                 {
                     output.Add($"Text at 0x{immediateValue:X4} (via BP): \"{text}\"");
@@ -1483,7 +1538,7 @@ namespace MMOvrAnalyzer
                 try
                 {
                     ushort value = ReadUInt16At(br, 0x3CB6);
-                    string text = ExtractText(br, value);
+                    string text = ExtractText(br, value, config);
                     if (!string.IsNullOrEmpty(text) && text != "(empty string)" && !text.StartsWith("Cannot locate"))
                     {
                         output.Add($"Text at 0x{value:X4} (from [3CB6]): \"{text}\"");
@@ -1527,11 +1582,11 @@ namespace MMOvrAnalyzer
             return 0;
         }
 
-        static string ExtractText(BinaryReader br, ushort textAddress)
+        static string ExtractText(BinaryReader br, ushort textAddress, OverlayConfig config)
         {
             try
             {
-                long fileOffset = textAddress - TEXT_BASE_ADDR;
+                long fileOffset = textAddress - config.TextBaseAddr;
 
                 if (fileOffset < 0 || fileOffset >= br.BaseStream.Length)
                 {
@@ -1543,7 +1598,7 @@ namespace MMOvrAnalyzer
 
                 var bytes = new List<byte>();
                 byte b;
-                int maxLength = 200;
+                int maxLength = 250;
 
                 while ((b = br.ReadByte()) != 0 && bytes.Count < maxLength)
                 {
