@@ -10,13 +10,15 @@ namespace MMOvrAnalyzer
 {
     class Program
     {
-        // Класс для конфигурации файлов (заменили константы)
+        // Класс для конфигурации файлов
         class OverlayConfig
         {
             public string FileName { get; set; }
+            public ushort ObjNumBase { get; set; }  // Смещение для чтения количества объектов
             public ushort TextBaseAddr { get; set; }
             public ushort PatchBase { get; set; }
         }
+
         // Глобальный список для отслеживания проанализированных объектов
         private static int currentObjectIndex = 0;
         private static List<AlternativePath> alternativePaths = new List<AlternativePath>();
@@ -54,7 +56,7 @@ namespace MMOvrAnalyzer
             }
             else
             {
-                filename = @"C:\GOG Games\Might and Magic 1\SORPIGAL.OVR";
+                filename = @"C:\GOG Games\Might and Magic 1\PORTSMIT.OVR";
             }
 
             // Получаем конфигурацию для файла
@@ -71,7 +73,7 @@ namespace MMOvrAnalyzer
             try
             {
                 Console.WriteLine($"Analyzing overlay: {filename}");
-                Console.WriteLine($"Configuration: TEXT_BASE_ADDR=0x{config.TextBaseAddr:X4}, PATCH_BASE=0x{config.PatchBase:X4}");
+                Console.WriteLine($"Configuration: OBJ_NUM_BASE=0x{config.ObjNumBase:X4}, TEXT_BASE_ADDR=0x{config.TextBaseAddr:X4}, PATCH_BASE=0x{config.PatchBase:X4}");
                 Console.WriteLine($"File size: {new FileInfo(filename).Length} bytes");
                 Console.WriteLine("=".PadRight(70, '='));
                 AnalyzeOverlay(filename, config);
@@ -97,18 +99,28 @@ namespace MMOvrAnalyzer
                     return new OverlayConfig
                     {
                         FileName = filename,
+                        ObjNumBase = 0x386,
                         TextBaseAddr = 0xC5EC,
                         PatchBase = 0x0B7F
                     };
 
-                // Добавьте другие файлы по мере необходимости
-                // case "FILE2.OVR":
-                //     return new OverlayConfig { ... };
+                case "PORTSMIT.OVR":
+                    return new OverlayConfig
+                    {
+                        FileName = filename,
+                        ObjNumBase = 0x412,
+                        TextBaseAddr = 0xC560,
+                        PatchBase = 0x0B7F
+                    };
 
                 default:
                     // Заглушка для неизвестных файлов - можно запросить значения у пользователя
                     Console.WriteLine($"\nUnknown file: {fileNameOnly}");
                     Console.WriteLine("Please provide configuration values:");
+
+                    Console.Write("OBJ_NUM_BASE (hex, e.g., 0386): ");
+                    string objNumBaseStr = Console.ReadLine();
+                    ushort objNumBase = Convert.ToUInt16(objNumBaseStr, 16);
 
                     Console.Write("TEXT_BASE_ADDR (hex, e.g., C5EC): ");
                     string textBaseStr = Console.ReadLine();
@@ -121,6 +133,7 @@ namespace MMOvrAnalyzer
                     return new OverlayConfig
                     {
                         FileName = filename,
+                        ObjNumBase = objNumBase,
                         TextBaseAddr = textBase,
                         PatchBase = patchBase
                     };
@@ -462,8 +475,8 @@ namespace MMOvrAnalyzer
                     return;
                 }
 
-                // Чтение количества объектов (смещение 0x386)
-                fs.Seek(0x386, SeekOrigin.Begin);
+                // Чтение количества объектов (смещение config.ObjNumBase)
+                fs.Seek(config.ObjNumBase, SeekOrigin.Begin);
                 byte numObjects = br.ReadByte();
                 Console.WriteLine($"\nNumber of objects: {numObjects} (0x{numObjects:X2})");
                 Console.WriteLine("-".PadRight(70, '-'));
@@ -1598,7 +1611,7 @@ namespace MMOvrAnalyzer
 
                 var bytes = new List<byte>();
                 byte b;
-                int maxLength = 250;
+                int maxLength = 200;
 
                 while ((b = br.ReadByte()) != 0 && bytes.Count < maxLength)
                 {
