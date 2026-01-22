@@ -14,6 +14,7 @@ namespace MMOvrAnalyzer
         class OverlayConfig
         {
             public string FileName { get; set; }
+            public ushort ObjNumBase { get; set; }
             public ushort TextBaseAddr { get; set; }
             public ushort PatchBase { get; set; }
         }
@@ -51,7 +52,8 @@ namespace MMOvrAnalyzer
             }
             else
             {
-                filename = @"C:\GOG Games\Might and Magic 1\SORPIGAL.OVR";
+                //filename = @"C:\GOG Games\Might and Magic 1\SORPIGAL.OVR";
+                filename = @"C:\GOG Games\Might and Magic 1\PORTSMIT.OVR";
             }
 
             // Получаем конфигурацию для файла
@@ -94,7 +96,17 @@ namespace MMOvrAnalyzer
                     return new OverlayConfig
                     {
                         FileName = filename,
+                        ObjNumBase = 0x386,
                         TextBaseAddr = 0xC5EC,
+                        PatchBase = 0x0B7F
+                    };
+
+                case "PORTSMIT.OVR":
+                    return new OverlayConfig
+                    {
+                        FileName = filename,
+                        ObjNumBase = 0x412,
+                        TextBaseAddr = 0xC560,
                         PatchBase = 0x0B7F
                     };
 
@@ -721,8 +733,8 @@ namespace MMOvrAnalyzer
                     return;
                 }
 
-                // Чтение количества объектов (смещение 0x386)
-                fs.Seek(0x386, SeekOrigin.Begin);
+                // Чтение количества объектов (смещение config.ObjNumBas)
+                fs.Seek(config.ObjNumBase, SeekOrigin.Begin);
                 byte numObjects = br.ReadByte();
                 Console.WriteLine($"\nNumber of objects: {numObjects} (0x{numObjects:X2})");
                 Console.WriteLine("-".PadRight(70, '-'));
